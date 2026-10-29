@@ -63,7 +63,7 @@ function Save-GuiConfig([string]$Repo, [int]$Minutes, [string[]]$Excludes) {
 $ToolVersion = '1.0.0'
 
 # 本工具的更新源（内置固定，不开放给用户修改；与主脚本的 $ToolRepo 保持一致）
-$ToolRepo = 'https://github.com/JOHNNY-beep456/InfiniteGithubUpstreamSync'
+$ToolRepo = 'https://github.com/ted-li-git/Infinite_gh_Upstream_Sync'
 
 function ConvertTo-VersionNum([string]$v) {
     if ([string]::IsNullOrWhiteSpace($v)) { return $null }

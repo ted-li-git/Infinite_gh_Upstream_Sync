@@ -56,7 +56,7 @@ $DefaultRepo = 'https://github.com/JOHNNY-beep456/HungerCat_MineCraft_Launcher.g
 $ToolVersion = '1.0.0'
 
 # 本工具的更新源（内置固定，不开放给用户修改；更换发布仓库只需改这一行）
-$ToolRepo = 'https://github.com/JOHNNY-beep456/InfiniteGithubUpstreamSync'
+$ToolRepo = 'https://github.com/ted-li-git/Infinite_gh_Upstream_Sync'
 
 # 自动更新时会替换的本工具文件（仓库里缺少某个文件就跳过该文件）
 $ToolFiles = @(
