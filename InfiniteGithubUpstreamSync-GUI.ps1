@@ -159,6 +159,15 @@ function Restart-TrayIfRunning {
     return $true
 }
 
+# 把下载的脚本里的版本号改成 tag 值（与主脚本同一逻辑）
+function Set-ScriptVersion([string]$Path, [string]$Version) {
+    $txt = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+    $new = [regex]::Replace($txt, '^\$ToolVersion = ''[^'']*''', {
+            param($m) '$ToolVersion = ''' + $Version + ''''
+        }, 'Multiline')
+    if ($new -ne $txt) { [System.IO.File]::WriteAllText($Path, $new, (New-Object System.Text.UTF8Encoding $true)) }
+}
+
 function Invoke-ToolUpdateGui {
     $t = Test-ToolUpdate
     if ($t.Error) { return @{ Ok = $false; Msg = '无法检查更新：' + $t.Error } }
@@ -166,6 +175,7 @@ function Invoke-ToolUpdateGui {
 
     $slug = $ToolRepo.Trim().TrimEnd('/') -replace '^https://github\.com/', '' -replace '\.git$', ''
     $tag = $t.Latest
+    $ver = ([string]$tag).TrimStart('v', 'V')
     $ts = Get-Date -Format 'yyyyMMdd-HHmmss'
     $tmp = Join-Path $env:TEMP ('igus-update-' + $ts)
     New-Item -ItemType Directory -Path $tmp -Force | Out-Null
@@ -178,6 +188,7 @@ function Invoke-ToolUpdateGui {
             Invoke-WebRequest -Uri $uri -OutFile $dst -UseBasicParsing -TimeoutSec 40
             if ((Get-Item -LiteralPath $dst).Length -lt 100) { $fail += $f; continue }
             if ($f -like '*.ps1') {
+                Set-ScriptVersion $dst $ver
                 $errs = $null
                 $null = [System.Management.Automation.Language.Parser]::ParseFile($dst, [ref]$null, [ref]$errs)
                 if ($errs -and $errs.Count -gt 0) { $fail += ($f + '(语法检查未通过)'); continue }
@@ -214,7 +225,7 @@ function Invoke-ToolUpdateGui {
     Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
 
     $restarted = Restart-TrayIfRunning
-    $msg = '已更新到 ' + $tag + '，替换 ' + $got.Count + ' 个文件：' + ($got -join '、')
+    $msg = '已更新到 ' + $tag + '（本地版本号已同步为 ' + $ver + '），替换 ' + $got.Count + ' 个文件：' + ($got -join '、')
     if ($fail.Count -gt 0) { $msg += '；未获取：' + ($fail -join '、') }
     if ($restarted) { $msg += '；托盘已重启' }
     $msg += '；原文件备份在 ' + $backup
@@ -450,7 +461,11 @@ try {
                         $ur = Invoke-ToolUpdateGui
                         [void][System.Windows.Forms.MessageBox]::Show($ur.Msg, 'InfiniteGithubUpstreamSync', 'OK',
                             $(if ($ur.Ok) { 'Information' } else { 'Warning' }))
-                        if ($ur.Ok) { & $refreshStatus }
+                        if ($ur.Ok) {
+                            # 更新已替换本地脚本，当前进程里仍是旧代码，直接退出让用户重开
+                            $form.Close()
+                            return
+                        }
                     } else { Start-Process $dt.Url }
                 } else {
                     [void][System.Windows.Forms.MessageBox]::Show($msg, 'InfiniteGithubUpstreamSync', 'OK', 'Information')
@@ -459,8 +474,10 @@ try {
                 Write-GuiError ('检测更新失败: ' + $_.Exception.Message)
                 Show-GuiMessage ('检测失败：' + $_.Exception.Message) 'Error'
             } finally {
-                $btnCheck.Enabled = $true
-                $btnCheck.Text = $oldText
+                if (-not $form.IsDisposed) {
+                    $btnCheck.Enabled = $true
+                    $btnCheck.Text = $oldText
+                }
             }
         })
 
@@ -473,13 +490,19 @@ try {
                 $ur = Invoke-ToolUpdateGui
                 [void][System.Windows.Forms.MessageBox]::Show($ur.Msg, 'InfiniteGithubUpstreamSync', 'OK',
                     $(if ($ur.Ok) { 'Information' } else { 'Warning' }))
-                if ($ur.Ok) { & $refreshStatus }
+                if ($ur.Ok) {
+                    # 更新成功后直接退出 GUI，重新打开才会加载新版本代码
+                    $form.Close()
+                    return
+                }
             } catch {
                 Write-GuiError ('自我更新失败: ' + $_.Exception.Message)
                 Show-GuiMessage ('更新失败：' + $_.Exception.Message) 'Error'
             } finally {
-                $btnUpdate.Enabled = $true
-                $btnUpdate.Text = $oldText
+                if (-not $form.IsDisposed) {
+                    $btnUpdate.Enabled = $true
+                    $btnUpdate.Text = $oldText
+                }
             }
         })
 

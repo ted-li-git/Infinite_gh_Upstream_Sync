@@ -372,6 +372,15 @@ function Invoke-CheckUpdate {
     return $t
 }
 
+# 把下载到临时目录的脚本里的版本号改成 tag 值（tag 是权威版本，避免脚本里写死的旧版本号）
+function Set-ScriptVersion([string]$Path, [string]$Version) {
+    $txt = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+    $new = [regex]::Replace($txt, '^\$ToolVersion = ''[^'']*''', {
+            param($m) '$ToolVersion = ''' + $Version + ''''
+        }, 'Multiline')
+    if ($new -ne $txt) { [System.IO.File]::WriteAllText($Path, $new, (New-Object System.Text.UTF8Encoding $true)) }
+}
+
 # 工具自我更新：从工具仓库对应 tag 下载各文件 → 校验 → 备份 → 替换 → 重启托盘
 # 返回 @{ Ok=bool; Msg=string }
 function Invoke-ToolUpdate {
@@ -381,6 +390,7 @@ function Invoke-ToolUpdate {
 
     $slug = (Get-ToolRepoUrl).Trim().TrimEnd('/') -replace '^https://github\.com/', '' -replace '\.git$', ''
     $tag = $t.Latest
+    $ver = ([string]$tag).TrimStart('v', 'V')
     $ts = Get-Date -Format 'yyyyMMdd-HHmmss'
     $tmp = Join-Path $env:TEMP ('igus-update-' + $ts)
     New-Item -ItemType Directory -Path $tmp -Force | Out-Null
@@ -394,6 +404,7 @@ function Invoke-ToolUpdate {
             Invoke-WebRequest -Uri $uri -OutFile $dst -UseBasicParsing -TimeoutSec 40
             if ((Get-Item -LiteralPath $dst).Length -lt 100) { $fail += $f; continue }
             if ($f -like '*.ps1') {
+                Set-ScriptVersion $dst $ver
                 $errs = $null
                 $null = [System.Management.Automation.Language.Parser]::ParseFile($dst, [ref]$null, [ref]$errs)
                 if ($errs -and $errs.Count -gt 0) { $fail += ($f + '(语法检查未通过)'); continue }
@@ -434,7 +445,7 @@ function Invoke-ToolUpdate {
     # 4) 托盘在跑就重启它，让新代码生效
     $restarted = Restart-TrayIfRunning
 
-    $msg = '已更新到 ' + $tag + '，替换 ' + $got.Count + ' 个文件：' + ($got -join '、')
+    $msg = '已更新到 ' + $tag + '（本地版本号已同步为 ' + $ver + '），替换 ' + $got.Count + ' 个文件：' + ($got -join '、')
     if ($fail.Count -gt 0) { $msg += '；未获取：' + ($fail -join '、') }
     if ($restarted) { $msg += '；托盘已重启' }
     $msg += '；原文件备份在 ' + $backup

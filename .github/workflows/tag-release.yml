@@ -1,0 +1,71 @@
+name: Auto tag & release
+
+# 每次 push 到 main 自动生成递增 tag 并发布 release
+# 版本规则 X.Y.Z（十进制进位，每位 0-9）：
+#   Z+1；若 Z 到 10 则 Z 归 0、Y+1；若 Y 到 10 则 Y 归 0、Z 归 0、X+1
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # 版本号回写的提交带 [skip ci]，避免"提交→再触发→再打 tag"的死循环
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute next version
+        id: ver
+        run: |
+          set -euo pipefail
+          latest=$(git tag -l | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1 || true)
+          if [ -z "${latest}" ]; then latest="0.0.0"; fi
+          IFS='.' read -r x y z <<< "${latest}"
+          z=$((z + 1))
+          if [ "${z}" -ge 10 ]; then z=0; y=$((y + 1)); fi
+          if [ "${y}" -ge 10 ]; then y=0; x=$((x + 1)); fi
+          next="${x}.${y}.${z}"
+          echo "tag=${next}" >> "$GITHUB_OUTPUT"
+          echo "上一个 tag: ${latest} → 新 tag: ${next}"
+
+      - name: Stamp version into scripts
+        run: |
+          set -euo pipefail
+          v="${{ steps.ver.outputs.tag }}"
+          for f in InfiniteGithubUpstreamSync.ps1 InfiniteGithubUpstreamSync-GUI.ps1; do
+            if [ -f "$f" ]; then
+              sed -i "s/^\$ToolVersion = '[^']*'/\$ToolVersion = '${v}'/" "$f"
+            fi
+          done
+          git diff --stat
+
+      - name: Commit, tag and push
+        run: |
+          set -euo pipefail
+          v="${{ steps.ver.outputs.tag }}"
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "chore: bump version to ${v} [skip ci]"
+            git push origin HEAD:main
+          fi
+          git tag "${v}"
+          git push origin "${v}"
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "${{ steps.ver.outputs.tag }}" \
+            --title "${{ steps.ver.outputs.tag }}" \
+            --generate-notes
