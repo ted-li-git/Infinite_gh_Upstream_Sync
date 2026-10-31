@@ -53,7 +53,7 @@ $MutexName  = 'Local\InfiniteGithubUpstreamSync'
 $DefaultRepo = 'https://github.com/JOHNNY-beep456/HungerCat_MineCraft_Launcher.git'
 
 # 本工具自身的版本号：发布新版时改这里（GUI/托盘「检测更新」会与 GitHub 上的 tag 对比）
-$ToolVersion = '1.0.2'
+$ToolVersion = '1.0.3'
 
 # 本工具的更新源（内置固定，不开放给用户修改；更换发布仓库只需改这一行）
 $ToolRepo = 'https://github.com/ted-li-git/Infinite_gh_Upstream_Sync'
